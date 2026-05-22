@@ -96,17 +96,6 @@ packer --version
 atmos version
 ```
 
-## Repo Scripts
-
-These shell scripts use similar commands for AMI/provisioning work:
-
-| Script | Tool |
-| --- | --- |
-| `../scripts/prerequisites/install-git.sh` | Git |
-| `../scripts/prerequisites/install-awscli-v2.sh` | AWS CLI v2 |
-| `../scripts/prerequisites/install-terraform.sh` | Terraform |
-| `../scripts/prerequisites/install-atmos.sh` | Atmos |
-
 ## Recap Docs
 
 - [linux-recap.md](./linux-recap.md)
