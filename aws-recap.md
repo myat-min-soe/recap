@@ -1,431 +1,645 @@
-# AWS Services Recap - DevOps Bootcamp
+# AWS Services Recap
 
-ဒီ document က WordPress + LEMP + Terraform project အတွက် အသုံးပြုမယ့် AWS service တွေကို Burmese ဖြင့် အသေးစိတ် recap လုပ်ထားတာပါ။
+## VPC - Virtual Private Cloud
 
-## Architecture အကျဉ်းချုပ်
+AWS account ထဲမှာ ကိုယ်ပိုင် virtual network တစ်ခုဆောက်တာပါ။ real-world network တစ်ခုလိုပဲ IP range, subnets, routing, firewall rules တွေကို ကိုယ်တိုင် define လုပ်နိုင်ပါတယ်။
 
-ဒီ project ရဲ့ goal က WordPress site တစ်ခုကို AWS ပေါ်မှာ production နီးပါး architecture နဲ့ deploy လုပ်နိုင်ဖို့ပါ။
+### CIDR Block
 
-Flow က ဒီလိုသွားမယ်။
+VPC create တဲ့အခါ IP address range ကို CIDR notation နဲ့သတ်မှတ်ရပါတယ်။
 
 ```text
-User
-  -> Route 53 DNS
-  -> CloudFront or ALB
-  -> AWS WAF
-  -> EC2 Ubuntu 24.04, Nginx, PHP-FPM, WordPress
-  -> RDS MySQL
-  -> S3 media bucket
-  -> CloudWatch metrics/logs
+10.0.0.0/16  ->  10.0.0.0 to 10.0.255.255  (65,536 IPs)
+10.0.1.0/24  ->  10.0.1.0 to 10.0.1.255    (256 IPs)
 ```
 
-Terraform က infrastructure တွေကို code အနေနဲ့ create/update/destroy လုပ်ပေးမယ်။
+VPC CIDR ကို /16 လောက်ကျယ်ကျယ်ထားပြီး subnet တွေကို /24 လောက် ခွဲသုံးတာ common pattern ပါ။
 
-## 1. VPC
+### Subnets
 
-VPC ဆိုတာ AWS account ထဲမှာ ကိုယ်ပိုင် virtual network တစ်ခုဆောက်တာပါ။ EC2, RDS, NAT Gateway, Load Balancer စတဲ့ resource တွေကို VPC ထဲမှာထားပြီး network control လုပ်နိုင်တယ်။
+Subnet ဆိုတာ VPC ထဲမှာ IP range ကိုထပ်ခွဲတာပါ။ Subnet တစ်ခုက Availability Zone (AZ) တစ်ခုနဲ့ bind ဖြစ်ပါတယ်။
 
-ဒီ bootcamp မှာ VPC ထဲမှာ public subnet နဲ့ private subnet ခွဲထားမယ်။
+**Public Subnet:**
+- Internet Gateway route ရှိတဲ့ subnet
+- Resources တွေကို public IP ပေးနိုင်တယ်
+- ALB, NAT Gateway ထားရာ
 
-Public subnet:
+**Private Subnet:**
+- Internet Gateway route မရှိတဲ့ subnet
+- Internet ကနေတိုက်ရိုက်ဝင်လို့မရပါ
+- Application server, database ထားရာ
 
-- Internet Gateway နဲ့ ချိတ်ထားတယ်။
-- Internet ကနေ တိုက်ရိုက်ဝင်နိုင်တဲ့ resource တွေထားတယ်။
-- ဥပမာ EC2 public WordPress server, NAT Gateway, ALB။
+High availability အတွက် subnet တွေကို AZ အနည်းဆုံး ၂ ခုမှာ ဖြန့်ထားသင့်ပါတယ်။
 
-Private subnet:
+### Internet Gateway (IGW)
 
-- Internet ကနေ တိုက်ရိုက်ဝင်လို့မရဘူး။
-- Database လို sensitive resource တွေထားတယ်။
-- ဥပမာ RDS MySQL။
+VPC နဲ့ internet ကိုချိတ်ဆက်ပေးတဲ့ component ပါ။ Public subnet ရဲ့ route table မှာ `0.0.0.0/0 -> IGW` ရှိမှ internet access ရပါတယ်။
 
-အရေးကြီးတဲ့ concept တွေ:
+### NAT Gateway
 
-- CIDR block: VPC/Subnet ရဲ့ IP range ဖြစ်တယ်။ ဥပမာ `10.0.0.0/16`
-- Route table: traffic ဘယ်ကိုသွားမလဲ သတ်မှတ်တယ်။
-- Internet Gateway: public subnet က internet ထွက်/ဝင်နိုင်အောင်လုပ်တယ်။
-- NAT Gateway: private subnet ထဲက resource တွေ internet ထွက်နိုင်အောင်လုပ်တယ်။ ဒါပေမယ့် internet ကနေ private resource ကို တိုက်ရိုက်ဝင်လို့မရဘူး။
+Private subnet ထဲက resources တွေ outbound internet ထွက်နိုင်အောင်လုပ်ပေးတဲ့ component ပါ။ ဥပမာ private EC2 မှာ package update ပြုလုပ်တဲ့အခါ NAT Gateway ကတဆင့် internet ထွက်ပါတယ်။
 
-ဒီ project မှာ VPC module က public/private subnet, internet gateway, NAT gateway, route table တွေကို create လုပ်ဖို့ဖြစ်တယ်။
+NAT Gateway ကို public subnet ထဲမှာထားပြီး Elastic IP တစ်ခု assign လုပ်ရပါတယ်။ Internet ကနေ private resources ဆီ inbound access မပေးပါ။
 
-## 2. EC2
+### Route Tables
 
-EC2 ဆိုတာ AWS ပေါ်က virtual machine ပါ။ ဒီ project မှာ EC2 ကို WordPress application server အဖြစ်သုံးမယ်။
+Route table က traffic ဘယ်ကိုသွားမလဲ သတ်မှတ်တဲ့ rules တွေပါ။
 
-EC2 ပေါ်မှာ install လုပ်မယ့် stack:
+Public route table example:
 
-- Ubuntu 24.04
-- Nginx
-- PHP 8.3 / PHP-FPM
-- WordPress files
-- MySQL client
+```text
+10.0.0.0/16  ->  local
+0.0.0.0/0    ->  Internet Gateway
+```
 
-ဒီ project မှာ EC2 instance type ကို `t3a.small` သုံးထားတယ်။ Bootcamp/practice အတွက် `t3.micro` ထက် နည်းနည်း memory ပိုရပြီး WordPress test လုပ်ရတာ ပိုအဆင်ပြေတယ်။
+Private route table example:
 
-EC2 အတွက် security group:
+```text
+10.0.0.0/16  ->  local
+0.0.0.0/0    ->  NAT Gateway
+```
 
-- SSH port `22`: ကိုယ့် IP ကနေသာဝင်ခွင့်ပေးသင့်တယ်။
-- HTTP port `80`: ALB/CloudFront ကနေလာတဲ့ traffic အတွက်ဖွင့်တယ်။
-- Outbound: package install, WordPress download, update တွေအတွက် internet ထွက်ခွင့်ပေးတယ်။
+### Availability Zones
 
-Best practice:
+AZ ဆိုတာ AWS region ထဲမှာ physically separate ဖြစ်တဲ့ data center cluster တွေပါ။ `ap-southeast-1` region မှာ `1a`, `1b`, `1c` ဆိုပြီး AZ သုံးခုရှိပါတယ်။ Resources တွေကို AZ အများဆီဖြန့်ထားရင် AZ တစ်ခု fail ဖြစ်ရင်လည်း service မပျက်ပါ။
 
-- SSH key pair နဲ့ login ဝင်ပါ။
-- Password login မသုံးပါနဲ့။
-- Security group မှာ SSH ကို `0.0.0.0/0` မဖွင့်ပါနဲ့။
-- Application config, password, DB credential တွေကို Git ထဲမထည့်ပါနဲ့။
+---
 
-## 3. RDS
+## ALB - Application Load Balancer
 
-RDS ဆိုတာ managed database service ပါ။ ကိုယ်တိုင် MySQL server install/manage လုပ်စရာမလိုဘဲ AWS က database patching, backup, storage management တချို့ကို manage လုပ်ပေးတယ်။
+User request တွေကိုလက်ခံပြီး backend targets ဆီ distribute လုပ်တဲ့ Layer 7 (HTTP/HTTPS) load balancer ပါ။
 
-ဒီ project မှာ RDS MySQL ကို WordPress database အဖြစ်သုံးမယ်။
+### Load Balancer Types
 
-RDS design:
+AWS မှာ load balancer သုံးမျိုးရှိပါတယ်။
 
-- Private subnet ထဲမှာထားမယ်။
-- Publicly accessible ကို `false` ထားမယ်။
-- EC2 security group ကနေ MySQL port `3306` ကိုပဲ allow လုပ်မယ်။
-- Storage encrypted ထားမယ်။
-- Backup retention ထားမယ်။
+- **ALB** — HTTP/HTTPS, Layer 7, path/header-based routing
+- **NLB** — TCP/UDP, Layer 4, ultra-low latency
+- **CLB** — legacy, သုံးတာမကောင်းတော့ပါ
 
-ဒီ project မှာ RDS instance class ကို `db.t4g.micro` သုံးထားတယ်။ ဒါက ARM/Graviton based small database instance ဖြစ်ပြီး bootcamp/test workload အတွက် သင့်တော်တယ်။
+Web application တွေအတွက် ALB ကပိုသင့်တော်ပါတယ်။
 
-WordPress က RDS ကို connect လုပ်ဖို့လိုမယ့် info:
+### Listener
 
-- DB host: RDS endpoint
-- DB name: `wordpress`
-- DB user: `wordpress`
-- DB password: secret value
+ALB က port တစ်ခုကို listen လုပ်တဲ့ configuration ပါ။
 
-သတိထားရန်:
+- Port `80` listener — HTTP ကို HTTPS ဆီ redirect လုပ်တာများပါတယ်
+- Port `443` listener — HTTPS request လက်ခံပြီး target group ဆီ forward လုပ်တယ်
 
-- RDS password ကို `.tfvars` ထဲထည့်ရင် Git ထဲ commit မလုပ်ပါနဲ့။
-- Production မှာ AWS Secrets Manager သို့ Parameter Store သုံးတာပိုကောင်းတယ်။
-- Delete protection ကို production မှာ enable ထားသင့်တယ်။
+### Listener Rules
 
-## 4. S3
+Listener rule က request ကို inspect လုပ်ပြီး ဘယ် target group ဆီ forward မလဲ decide လုပ်တာပါ။
 
-S3 ဆိုတာ object storage service ပါ။ File, image, backup, log, Terraform state စတာတွေကို သိမ်းဖို့သုံးတယ်။
+Rule conditions:
 
-ဒီ project မှာ S3 ကို နှစ်မျိုးသုံးနိုင်တယ်။
+- Host header (domain name)
+- Path pattern (`/api/*`, `/images/*`)
+- HTTP method
+- Query string
+- Source IP
 
-WordPress media uploads:
+Rule actions:
 
-- WordPress uploaded images/files တွေကို S3 bucket ထဲ သိမ်းနိုင်တယ်။
-- CloudFront နဲ့တွဲသုံးရင် media delivery ပိုမြန်နိုင်တယ်။
-- WordPress plugin တစ်ခုဖြင့် S3 offload လုပ်နိုင်တယ်။
+- Forward to target group
+- Redirect
+- Fixed response (return static HTTP response)
 
-Terraform remote state:
+### Target Groups
 
-- Terraform state file ကို local machine ထဲမထားဘဲ S3 bucket ထဲ သိမ်းနိုင်တယ်။
-- Team project ဖြစ်လာရင် remote state အရေးကြီးတယ်။
-- DynamoDB table နဲ့ state locking လုပ်နိုင်တယ်။
+Target group က ALB ကနေ traffic receive မယ့် backends တွေကို group လုပ်ထားတာပါ。
 
-S3 best practice:
+Target types:
 
-- Public access block ကို default enable ထားပါ။
-- Bucket policy ကို လိုအပ်သလောက်ပဲဖွင့်ပါ။
-- Versioning enable ထားရင် mistake recovery ပိုကောင်းတယ်။
-- Terraform state bucket ကို encrypted ထားပါ။
+- **Instance** — EC2 instance ID
+- **IP** — private IP address
+- **Lambda** — Lambda function
 
-## 5. CloudFront
+Health check: ALB က target တွေကို regularly health check လုပ်ပြီး unhealthy target ဆီ traffic မပို့ပါ。
 
-CloudFront ဆိုတာ AWS CDN service ပါ။ User နဲ့ နီးတဲ့ edge location ကနေ content ပြန်ပေးနိုင်လို့ site speed ပိုကောင်းတယ်။
+### ALB Access Logs
 
-WordPress project မှာ CloudFront ကို ဒီလိုသုံးနိုင်တယ်။
+ALB ကိုဖြတ်သွားတဲ့ request တွေကို S3 မှာ log သိမ်းနိုင်ပါတယ်။ Client IP, request time, response code, latency တွေ ပါပါတယ်။
 
-- WordPress site အတွက် CDN layer
-- Static assets cache
-- S3 media bucket cache
-- HTTPS certificate integration
-- WAF attach လုပ်နိုင်တဲ့ edge layer
+---
 
-Origin ဆိုတာ CloudFront က content သွားယူမယ့် backend ပါ။
+## EC2 - Elastic Compute Cloud
 
-Possible origins:
+AWS virtual machine ပါ။ CPU, memory, storage, OS ကို ကိုယ်တိုင်ရွေးချယ်ပြီး application run ဖို့သုံးပါတယ်။
 
-- EC2 public DNS
-- ALB DNS name
-- S3 bucket
+### Instance Types
 
-Production နီးပါး design မှာ CloudFront -> ALB -> EC2 ဆိုတာ ပိုကောင်းတယ်။ Bootcamp simple setup မှာ CloudFront -> EC2 လည်းလုပ်နိုင်တယ်။
+Instance type က CPU, memory, network performance ကိုသတ်မှတ်ပါတယ်။
 
-သတိထားရန်:
+Naming format: `[family][generation][attribute].[size]`
 
-- WordPress admin page `/wp-admin` ကို cache မလုပ်သင့်ဘူး။
-- Login, cart, admin, preview path တွေ cache policy သီးသန့်လိုနိုင်တယ်။
-- HTTPS ကို CloudFront/ALB မှာ terminate လုပ်ရင် WordPress `siteurl` နဲ့ forwarded header config မှန်ဖို့လိုတယ်။
+```text
+t3.micro    ->  burstable, 2 vCPU, 1 GB RAM
+t3a.small   ->  burstable AMD, 2 vCPU, 2 GB RAM
+m6i.large   ->  general purpose, 2 vCPU, 8 GB RAM
+c6i.xlarge  ->  compute optimized, 4 vCPU, 8 GB RAM
+```
 
-## 6. AWS WAF
+Common families:
 
-AWS WAF ဆိုတာ web application firewall ပါ။ HTTP request တွေကို inspect လုပ်ပြီး attack traffic ကို block/count/allow လုပ်နိုင်တယ်။
+- `t` — burstable, dev/small workloads
+- `m` — general purpose, balanced
+- `c` — compute optimized
+- `r` — memory optimized
+- `i` — storage optimized
 
-WordPress အတွက် useful ဖြစ်တဲ့ rule တွေ:
+### AMI - Amazon Machine Image
 
-- AWSManagedRulesWordPressRuleSet
-- AWSManagedRulesPHPRuleSet
-- AWSManagedRulesSQLiRuleSet
-- AWSManagedRulesKnownBadInputsRuleSet
-- AWSManagedRulesAmazonIpReputationList
-- Rate-based rule
+AMI ဆိုတာ OS + pre-installed software ပါတဲ့ server template ပါ。 EC2 instance launch မယ်ဆိုရင် AMI ကနေ create လုပ်ပါတယ်。
 
-ဒီ project မှာ WAF ကို WordPress-compatible ဖြစ်အောင် configure လုပ်ထားတယ်။
+- AWS official AMIs (Ubuntu, Amazon Linux, Windows)
+- AWS Marketplace AMIs
+- Custom AMIs (ကိုယ်တိုင် build ထားတာ)
 
-အရေးကြီးတဲ့ point:
+### EBS - Elastic Block Store
 
-- WordPress upload တွေအတွက် body size rule က false positive ဖြစ်နိုင်တယ်။
-- ဒီအတွက် `SizeRestrictions_BODY` ကို `count` mode ထားထားတယ်။
-- Count mode ဆိုတာ block မလုပ်သေးဘဲ log/metric ကြည့်ဖို့ကောင်းတယ်။
-- Traffic pattern နားလည်လာမှ block mode ပြောင်းတာ ပိုကောင်းတယ်။
+EC2 instance ရဲ့ disk storage ပါ。 Instance stop/start ဖြစ်ရင်လည်း data မပျောက်ပါ (instance store နဲ့မတူပါ)。
 
-WAF logging:
+EBS volume types:
 
-- WAF log တွေကို CloudWatch Log Group ထဲပို့ထားတယ်။
-- Log group name က `aws-waf-logs-...` prefix နဲ့ရှိရမယ်။
-- Logs Insights နဲ့ query လုပ်ပြီး blocked request, IP, URI, rule name တွေကြည့်နိုင်တယ်။
+- `gp3` — general purpose SSD, cost-effective, default
+- `gp2` — older general purpose SSD
+- `io2` — high performance SSD, database workloads
+- `st1` — throughput optimized HDD, big data
+- `sc1` — cold HDD, infrequent access
 
-CloudWatch Logs Insights sample query:
+### Instance Metadata
+
+EC2 instance ထဲကနေ instance ရဲ့ info တွေကို metadata endpoint မှာ query လုပ်နိုင်ပါတယ်。
+
+```bash
+curl http://169.254.169.254/latest/meta-data/instance-id
+curl http://169.254.169.254/latest/meta-data/local-ipv4
+```
+
+### User Data
+
+EC2 launch တဲ့အခါ bootstrap script run ဖို့ user data field မှာ script ထည့်နိုင်ပါတယ်。 Package install, config setup, service start တွေကို automate လုပ်နိုင်ပါတယ်。
+
+### SSM Session Manager
+
+SSH port `22` မဖွင့်ဘဲ private EC2 ကိုဝင်နိုင်တဲ့ AWS native tool ပါ。 IAM role မှာ `AmazonSSMManagedInstanceCore` policy ရှိရပြီး SSM Agent instance မှာ run နေရပါတယ်。
+
+Benefits:
+
+- No SSH key management လိုပါ
+- No port `22` public open မလိုပါ
+- Session logs CloudWatch/S3 မှာ audit trail ရှိတယ်
+- IAM permission နဲ့ control လုပ်နိုင်တယ်
+
+---
+
+## RDS - Relational Database Service
+
+Managed relational database service ပါ。 MySQL, PostgreSQL, MariaDB, Oracle, SQL Server, Aurora engine တွေ support ပါတယ်。
+
+### RDS vs Self-managed DB
+
+| | RDS | Self-managed (EC2) |
+|---|---|---|
+| OS patching | AWS | ကိုယ်တိုင် |
+| DB engine patching | AWS | ကိုယ်တိုင် |
+| Backup | Automated + manual | ကိုယ်တိုင် |
+| High availability | Multi-AZ one-click | ကိုယ်တိုင် configure |
+| Scaling | Easy | ကိုယ်တိုင် |
+| Cost | Higher | Lower |
+
+### DB Instance Classes
+
+```text
+db.t4g.micro    ->  burstable, low cost, dev
+db.t4g.small    ->  burstable, small workload
+db.m6g.large    ->  general purpose, production
+db.r6g.large    ->  memory optimized, heavy queries
+```
+
+### Storage
+
+- **gp2 / gp3** — general purpose SSD
+- **io1 / io2** — provisioned IOPS SSD, high performance
+- **magnetic** — legacy, avoid
+
+Storage autoscaling: threshold ထက်ကျော်သွားရင် storage ကိုအလိုအလျောက် scale up လုပ်နိုင်ပါတယ်。
+
+### Multi-AZ
+
+Primary DB ကို synchronously replicate လုပ်ပြီး standby ကို AZ ကွဲ ထားပါတယ်。 Primary fail ဖြစ်ရင် standby ကို automatic failover လုပ်ပါတယ်。 Read traffic မဆောင်တဲ့ pure HA solution ပါ。
+
+### Read Replicas
+
+Read-heavy workload အတွက် DB ကို asynchronously replicate လုပ်ပြီး read traffic ကို replica ဆီ distribute လုပ်နိုင်ပါတယ်。 Write ကတော့ primary ကိုပဲသွားရပါတယ်。 Cross-region read replica လည်းထားနိုင်ပါတယ်。
+
+### Automated Backups
+
+Retention period (1-35 days) သတ်မှတ်ထားရင် AWS က daily backup + transaction logs ကိုသိမ်းပြီး point-in-time restore လုပ်နိုင်ပါတယ်。
+
+### Parameter Groups
+
+DB engine settings တွေကို parameter group မှာ configure လုပ်ပါတယ်。 ဥပမာ `max_connections`, `innodb_buffer_pool_size` စတဲ့ MySQL parameters တွေ。
+
+### Secrets Manager Integration
+
+`manage_master_user_password = true` သုံးရင် RDS master password ကို Secrets Manager မှာ auto-rotate လုပ်ပေးပါတယ်。 Plain text password ကို code/config ထဲမထည့်ဘဲ Secrets Manager API ကတဆင့်ဖတ်ပါတယ်。
+
+---
+
+## IAM - Identity and Access Management
+
+AWS ထဲမှာ who can do what ကိုသတ်မှတ်တဲ့ service ပါ。
+
+### Core Concepts
+
+**Users** — human identity。 console/API access ရှိနိုင်တယ်。
+
+**Groups** — users တွေကို group လုပ်ပြီး policy attach လုပ်တာ。
+
+**Roles** — AWS services (EC2, Lambda) or external identities (SSO, cross-account) အတွက် temporary credentials ပေးတဲ့ identity。 EC2 မှာ access key မထည့်ဘဲ role assign လုပ်တာ best practice ပါ。
+
+**Policies** — JSON document ဖြင့် permissions define လုပ်တာ。
+
+### Policy Types
+
+- **AWS Managed** — AWS ပြင်ဆင်ထားတဲ့ built-in policies (`AmazonS3ReadOnlyAccess`, `AmazonSSMManagedInstanceCore`)
+- **Customer Managed** — ကိုယ်တိုင် create လုပ်တဲ့ policies
+- **Inline** — specific user/role/group ကိုပဲ directly attach လုပ်တာ
+
+### Policy Structure
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:PutObject"],
+      "Resource": "arn:aws:s3:::my-bucket/*"
+    }
+  ]
+}
+```
+
+- **Effect** — Allow or Deny
+- **Action** — ဘာလုပ်ခွင့်ပေးမလဲ
+- **Resource** — ဘယ် resource ကိုသက်ဆိုင်လဲ (ARN)
+
+### Least Privilege
+
+လိုအပ်တဲ့ permission ကိုပဲပေးပါ。 `*` (wildcard) action or resource ကို production မှာ သုံးတာရှောင်ပါ。
+
+### IAM Roles for EC2
+
+EC2 ကို AWS services (S3, SSM, CloudWatch) နဲ့ interact လုပ်စေချင်ရင် access key မသုံးဘဲ IAM role assign လုပ်ပါ。 Instance metadata ကနေ temporary credentials ကို automatically ရပါတယ်。
+
+---
+
+## AWS WAF - Web Application Firewall
+
+HTTP/HTTPS layer မှာ web attacks တွေကို filter လုပ်တဲ့ service ပါ。 Security group က port/IP ပဲ control လုပ်နိုင်ပေမယ့် WAF က HTTP request content ကိုကြည့်ပြီး decide လုပ်နိုင်ပါတယ်。
+
+### WAF Scope
+
+- **REGIONAL** — ALB, API Gateway, AppSync မှာ attach
+- **CLOUDFRONT** — CloudFront distribution မှာ attach (certificate `us-east-1` မှာလိုတယ်)
+
+### Web ACL
+
+WAF ရဲ့ main component ပါ。 Rules list ကိုထဲမှာ sequence အတိုင်း evaluate လုပ်ပါတယ်。 Priority number နည်းလေ ဦးစွာ evaluate လုပ်လေပါ。
+
+### Rule Types
+
+**AWS Managed Rule Groups** (ready-made):
+
+- `AWSManagedRulesCommonRuleSet` — OWASP Top 10 common attacks
+- `AWSManagedRulesKnownBadInputsRuleSet` — known malicious patterns
+- `AWSManagedRulesSQLiRuleSet` — SQL injection
+- `AWSManagedRulesAmazonIpReputationList` — known bad IPs
+- `AWSManagedRulesPHPRuleSet` — PHP-specific attacks
+- `AWSManagedRulesWordPressRuleSet` — WordPress-specific attacks
+
+**Custom Rules**:
+
+- Rate-based rule — IP တစ်ခုကနေ request limit ကျော်ရင် block
+- IP set rule — specific IPs allow/block
+- Regex pattern — URI/header pattern match လုပ်ပြီး block
+
+### Rule Actions
+
+- **Allow** — request ကိုဖြတ်သွားခွင့်ပေးတယ်
+- **Block** — 403 ပြန်ပြီး request ကို block တယ်
+- **Count** — block မလုပ်ဘဲ log/metric မှာ count ပဲလုပ်တယ် (testing phase မှာသုံးတာကောင်းတယ်)
+- **CAPTCHA** — challenge ဖြေခိုင်းတယ်
+
+### WAF Logging
+
+WAF logs ကို CloudWatch Logs, S3, Kinesis Data Firehose ဆီ ship လုပ်နိုင်ပါတယ်。
+
+CloudWatch Logs Insights query:
 
 ```sql
-fields @timestamp, action, httpRequest.clientIp, httpRequest.country, httpRequest.uri, terminatingRuleId
+fields @timestamp, action, httpRequest.clientIp, httpRequest.uri, terminatingRuleId
 | sort @timestamp desc
 | limit 50
 ```
 
-Blocked request တွေပဲကြည့်ချင်ရင်:
+Blocked requests only:
 
 ```sql
-fields @timestamp, httpRequest.clientIp, httpRequest.uri, terminatingRuleId
-| filter action = "BLOCK"
+filter action = "BLOCK"
+| fields @timestamp, httpRequest.clientIp, httpRequest.uri, terminatingRuleId
 | sort @timestamp desc
-| limit 50
 ```
 
-## 7. CloudWatch
+Sensitive headers (authorization, cookie) ကို log မှာ redact လုပ်ထားနိုင်ပါတယ်。
 
-CloudWatch က monitoring နဲ့ observability service ပါ။
+---
 
-အသုံးများတာတွေ:
+## Security Groups
 
-- Metrics
-- Logs
-- Alarms
-- Dashboards
-- Log Insights queries
+EC2, RDS, ALB တို့ ကို attach လုပ်နိုင်တဲ့ stateful virtual firewall ပါ。
 
-ဒီ project မှာ CloudWatch ကို ဒီလိုသုံးနိုင်တယ်။
+### Stateful
 
-EC2 monitoring:
+Stateful ဆိုတာ outbound rule မသတ်မှတ်ဘဲ inbound allow လုပ်ထားရင် response traffic က automatically ပြန်ဆင်းပါတယ်。 NACL (stateless) နဲ့မတူပါ。
 
-- CPU utilization
-- Status check failed
-- Disk usage, memory usage
-- Nginx/PHP-FPM logs
+### Inbound / Outbound Rules
 
-RDS monitoring:
+Rule မှာ ပါတဲ့ fields:
 
-- CPU utilization
-- Free storage space
-- Database connections
-- Read/write latency
+- **Type** — HTTP, HTTPS, SSH, Custom TCP...
+- **Protocol** — TCP, UDP, ICMP
+- **Port range** — 80, 443, 3306, 0-65535
+- **Source/Destination** — CIDR or another security group ID
 
-WAF monitoring:
+### Security Group Referencing
 
-- Allowed requests
-- Blocked requests
-- Counted requests
-- Rule-level metric
-- WAF full logs
-
-Production မှာ CloudWatch Agent install လုပ်ပြီး `/var/log/nginx/access.log`, `/var/log/nginx/error.log`, system logs တွေကို CloudWatch Logs ထဲပို့တာကောင်းတယ်။
-
-## 8. Route 53
-
-Route 53 ဆိုတာ AWS DNS service ပါ။ Domain name ကို AWS resource တွေနဲ့ချိတ်ဖို့သုံးတယ်။
-
-ဒီ project မှာ Route 53 ကို:
-
-- Domain hosted zone manage
-- `example.com` ကို CloudFront/ALB နဲ့ alias ချိတ်
-- `www.example.com` record ထည့်
-- ACM certificate DNS validation record ထည့်
-
-Alias record ဆိုတာ AWS resource တွေကို DNS record အနေနဲ့ချိတ်တဲ့ feature ပါ။ CloudFront, ALB, S3 website endpoint စတာတွေနဲ့ သုံးနိုင်တယ်။
-
-Example:
+CIDR range (`0.0.0.0/0`) မသုံးဘဲ security group ID ကို source/destination အဖြစ်သုံးနိုင်ပါတယ်。 ဒါကပိုပြီး precise နဲ့ secure ဖြစ်ပါတယ်。
 
 ```text
-example.com -> CloudFront distribution
-www.example.com -> CloudFront distribution
+RDS SG inbound:
+  Type: MySQL/Aurora
+  Port: 3306
+  Source: sg-xxxxxxxx  (EC2 security group)
 ```
 
-## 9. ACM
+ဆိုလိုတာက EC2 security group attach လုပ်ထားတဲ့ instances တွေကပဲ RDS ဆီဝင်ခွင့်ပြုတာပါ。
 
-ACM ဆိုတာ AWS Certificate Manager ပါ။ HTTPS အတွက် SSL/TLS certificate ထုတ်ဖို့သုံးတယ်။
+### Security Group vs NACL
 
-CloudFront အတွက် ACM certificate ကို `us-east-1` region မှာထုတ်ရမယ်။ ALB အတွက်တော့ ALB ရှိတဲ့ region မှာထုတ်နိုင်တယ်။
+| | Security Group | NACL |
+|---|---|---|
+| Level | Instance level | Subnet level |
+| Stateful | Yes | No (both directions needed) |
+| Allow/Deny | Allow only | Allow and Deny |
+| Order | All rules evaluate | Priority order |
 
-ဒီ project မှာ ACM ကို:
+---
 
-- Domain certificate create
-- DNS validation
-- CloudFront/ALB HTTPS listener မှာ attach
+## CloudWatch
 
-အသုံးပြုမယ်။
+AWS resources တွေရဲ့ metrics, logs, alarms, dashboards ကို centralized ကြည့်ရတဲ့ monitoring service ပါ。
 
-သတိထားရန်:
+### Metrics
 
-- Certificate validation မပြီးသေးရင် CloudFront/ALB HTTPS setup မပြီးနိုင်ဘူး။
-- DNS record မှန်မှ validation အောင်မယ်။
-- Wildcard certificate လိုရင် `*.example.com` ထည့်နိုင်တယ်။
+AWS services တွေက metrics တွေကို automatically CloudWatch ဆီ publish ပါတယ်。
 
-## 10. IAM
+Common metrics:
 
-IAM ဆိုတာ AWS permission management service ပါ။
+```text
+AWS/EC2       CPUUtilization, NetworkIn, NetworkOut, DiskReadOps
+AWS/RDS       CPUUtilization, DatabaseConnections, FreeStorageSpace
+AWS/ELB/ALB   RequestCount, HTTPCode_ELB_5XX_Count, TargetResponseTime
+AWS/WAF       BlockedRequests, AllowedRequests, CountedRequests
+```
 
-ဒီ project မှာ IAM ကို ဒီနေရာတွေမှာသုံးနိုင်တယ်။
+Custom metrics ကိုလည်း CloudWatch API/agent နဲ့ push လုပ်နိုင်ပါတယ်。
 
-Terraform user/role:
+### CloudWatch Agent
 
-- Terraform က AWS resource တွေ create လုပ်ဖို့ permission လိုတယ်။
-- Bootcamp မှာ admin permission သုံးရလွယ်ပေမယ့် production မှာ least privilege policy သုံးသင့်တယ်။
+EC2 instance ထဲမှာ memory, disk usage, process count စတဲ့ OS-level metrics တွေကို collect ဖို့ CloudWatch Agent install လုပ်ရပါတယ်。 Default EC2 metrics (CPUUtilization) ထဲမှာ memory မပါပါ。
 
-EC2 instance role:
+### Alarms
 
-- EC2 က S3 media bucket ကို access လုပ်ဖို့ IAM role attach လုပ်နိုင်တယ်။
-- AWS credential ကို EC2 file system ထဲ hardcode မလုပ်သင့်ဘူး။
+Metric value က threshold ကျော်ရင် alarm state ပြောင်းပြီး action trigger လုပ်ပါတယ်。
 
-GitHub Actions role:
+Alarm states:
 
-- CI/CD pipeline က Terraform plan/apply လုပ်ဖို့ AWS permission လိုတယ်။
-- Long-lived access key ထက် OIDC role assumption က ပိုကောင်းတယ်။
+- **OK** — metric က threshold အောက်
+- **ALARM** — metric က threshold ကျော်
+- **INSUFFICIENT_DATA** — data မရသေးဘူး
 
-Best practice:
+Alarm actions:
 
-- Access key ကို Git ထဲမထည့်ပါနဲ့။
-- Root account မသုံးပါနဲ့။
-- MFA enable လုပ်ပါ။
-- Permission ကို လိုအပ်သလောက်သာပေးပါ။
+- SNS topic notification
+- EC2 action (reboot, stop, terminate)
+- Auto Scaling action
 
-## 11. Security Group vs WAF
+### Logs
 
-Security Group နဲ့ WAF က မတူပါဘူး။
+Application, service, AWS resource logs တွေကို CloudWatch Logs မှာ centralized collect လုပ်နိုင်ပါတယ်。
 
-Security Group:
+Concepts:
 
-- Network layer firewall
-- Port/protocol/IP level control
-- EC2, RDS, ALB မှာ attach လုပ်တယ်
-- ဥပမာ `22`, `80`, `443`, `3306`
+- **Log Group** — log stream တွေကို group လုပ်တာ (per service/application)
+- **Log Stream** — single source ကနေ log sequence (per instance)
+- **Retention** — log ကို ဘယ်နှစ်ရက် keep မလဲ (1 day - never expire)
 
-WAF:
+Log Insights query example:
 
-- HTTP layer firewall
-- URL, header, body, query string, IP reputation စတာတွေ inspect လုပ်တယ်
-- SQL injection, bad bot, WordPress attack pattern တွေကို block လုပ်နိုင်တယ်
+```sql
+fields @timestamp, @message
+| filter @message like /ERROR/
+| sort @timestamp desc
+| limit 100
+```
 
-WordPress setup မှာ နှစ်ခုလုံးလိုတယ်။
+### Dashboards
 
-Example:
+Custom dashboard ထဲမှာ metrics နဲ့ logs ကို widget အနေနဲ့ arrange လုပ်ပြီး single view မှာကြည့်နိုင်ပါတယ်。
 
-- Security Group က RDS ကို EC2 ကနေပဲ MySQL ဝင်ခွင့်ပေးတယ်။
-- WAF က `/wp-login.php` attack, SQLi, malicious request တွေကို block/count လုပ်တယ်။
+---
 
-## 12. Terraform State
+## SNS - Simple Notification Service
 
-Terraform state က AWS မှာ create လုပ်ထားတဲ့ resource တွေနဲ့ local Terraform config ကို map လုပ်တဲ့ file ပါ။
+Publisher ကနေ subscriber ဆီ message ပို့တဲ့ pub/sub service ပါ。
 
-Local state:
+### Topics
 
-- Beginner အတွက်ရလွယ်တယ်။
-- Team နဲ့ share လုပ်ဖို့မကောင်းဘူး။
-- ပျောက်သွားရင် manage ခက်တယ်။
+Publisher က topic ဆီ message publish ပါတယ်。 Topic ကို subscribe လုပ်ထားတဲ့ subscribers တွေ message ရပါတယ်。
 
-Remote state:
+### Subscription Protocols
 
-- S3 bucket ထဲသိမ်းတယ်။
-- DynamoDB lock table နဲ့ apply conflict ကိုကာကွယ်တယ်။
-- Team workflow အတွက်ပိုကောင်းတယ်။
+- **Email** — email address ဆီ notification
+- **Email-JSON** — JSON format email
+- **HTTP/HTTPS** — webhook endpoint ဆီ POST
+- **SQS** — SQS queue ထဲထည့်တယ်
+- **Lambda** — Lambda function trigger
+- **SMS** — mobile number ဆီ text message
 
-State file ထဲမှာ sensitive data ပါနိုင်လို့:
+### Email Confirmation
 
-- Git ထဲ commit မလုပ်ပါနဲ့။
-- S3 encryption enable လုပ်ပါ။
-- Bucket access ကိုကန့်သတ်ပါ။
+Email subscription create ပြီးရင် AWS က confirmation email ပို့ပါတယ်。 Link click မပြုလုပ်သေးရင် subscription က `PendingConfirmation` state မှာ ရှိပြီး notification မရပါ。
 
-## 13. WordPress Deployment Notes
+### Fan-out Pattern
 
-WordPress ကို AWS ပေါ် deploy လုပ်တဲ့အခါ အဓိကသတိထားရမယ့်အချက်တွေ:
+Topic တစ်ခုကနေ subscribers အများကြီးဆီ တပြိုင်နက် message reach ဖြစ်ပါတယ်。 ဥပမာ S3 event တစ်ခုဖြစ်ရင် SNS topic ကနေ Lambda function နဲ့ SQS queue နှစ်ခုလုံးကို တပြိုင်နက် notify လုပ်နိုင်ပါတယ်。
 
-- `wp-config.php` ထဲ DB endpoint မှန်ရမယ်။
-- RDS security group က EC2 security group ကို allow လုပ်ရမယ်။
-- Nginx PHP-FPM socket path မှန်ရမယ်။
-- HTTPS termination ကို CloudFront/ALB မှာလုပ်ရင် forwarded headers ကို WordPress သိအောင် configure လုပ်ရမယ်။
-- Upload file size ကို Nginx, PHP, WAF သုံးနေရာလုံးစစ်ရမယ်။
-- WordPress admin password ကို strong password ထားရမယ်။
-- Plugin/theme update တွေကို regular လုပ်ရမယ်။
+---
 
-## 14. Bootcamp Troubleshooting Checklist
+## ACM - AWS Certificate Manager
 
-Site မပွင့်ဘူးဆိုရင်:
+SSL/TLS certificate ကို free issue, manage, renew လုပ်ပေးတဲ့ service ပါ。 ALB, CloudFront, API Gateway တို့မှာ attach လုပ်နိုင်ပါတယ်。
 
-- EC2 running ဖြစ်လား။
-- Security group မှာ port `80` ဖွင့်ထားလား။
-- Nginx running ဖြစ်လား: `sudo systemctl status nginx`
-- PHP-FPM running ဖြစ်လား: `sudo systemctl status php8.3-fpm`
-- Nginx config test အောင်လား: `sudo nginx -t`
+### Certificate Types
 
-Database connect မရရင်:
+- **Public** — internet-facing, free, domain validation လိုတယ်
+- **Private** — internal use, Private CA service လိုတယ်
 
-- RDS endpoint မှန်လား။
-- DB username/password မှန်လား။
-- RDS security group က EC2 security group ကို `3306` allow လုပ်ထားလား။
-- EC2 ကနေ MySQL client နဲ့ test လုပ်ကြည့်ပါ။
+### Validation Methods
 
-WAF block ဖြစ်နေရင်:
+**DNS Validation** (recommended):
 
-- CloudWatch Logs Insights မှာ WAF logs query လုပ်ပါ။
-- `terminatingRuleId` ကိုကြည့်ပါ။
-- False positive ဖြစ်ရင် rule ကို count mode သို့ override လုပ်ပါ။
+- Route 53 မှာ CNAME record ထည့်ရတယ်
+- Auto-renewal ဖြစ်ပါတယ်
 
-Terraform error ဖြစ်ရင်:
+**Email Validation**:
 
-- `terraform fmt -recursive`
-- `terraform validate`
-- `terraform plan`
-- AWS credential configured ဖြစ်လားစစ်ပါ။
-- Region မှန်လားစစ်ပါ။
+- Domain registrant email ဆီ confirmation email ပို့တယ်
+- Renewal မှာ manual confirm လိုနိုင်တယ်
 
-## 15. Service Mapping
+### Region Consideration
 
-ဒီ repo ထဲက Terraform module တွေကို AWS service တွေနဲ့ mapping လုပ်ရင်:
+ACM certificate က region-specific ပါ。
 
-| Module | AWS Service | Purpose |
-| --- | --- | --- |
-| `modules/vpc` | VPC, Subnet, IGW, NAT, Route Table | Network foundation |
-| `modules/ec2` | EC2, Security Group, Key Pair | WordPress server |
-| `modules/rds` | RDS MySQL, DB Subnet Group, Security Group | WordPress database |
-| `modules/s3` | S3 | Media upload or Terraform state |
-| `modules/cloudfront` | CloudFront | CDN and HTTPS edge |
-| `modules/waf` | AWS WAF, CloudWatch Log Group | Web protection and request logs |
-| `modules/cloudwatch` | CloudWatch | Metrics, alarms, dashboard |
-| `modules/route53` | Route 53 | DNS records |
-| `modules/acm` | ACM | SSL/TLS certificate |
+- **ALB** — ALB ရှိတဲ့ region မှာ certificate ရှိရမယ်
+- **CloudFront** — `us-east-1` မှာ certificate ရှိရမယ် (CloudFront က global service ဖြစ်ပေမယ့် us-east-1 ပဲ support တယ်)
 
-## 16. Final Recap
+### Certificate Renewal
 
-ဒီ architecture မှာ:
+ACM public certificates တွေကို AWS က expiry မတိုင်ခင် auto-renew လုပ်ပေးပါတယ်。 DNS validation သုံးထားရင် manual action မလိုပါ။
 
-- VPC က network foundation ဖြစ်တယ်။
-- EC2 က WordPress application server ဖြစ်တယ်။
-- RDS က WordPress database ဖြစ်တယ်။
-- S3 က media/static object storage ဖြစ်တယ်။
-- CloudFront/ALB က user traffic ကို receive လုပ်ပြီး EC2 ကို forward လုပ်တယ်။
-- WAF က malicious web request တွေကို filter လုပ်တယ်။
-- CloudWatch က metrics/logs/alarm တွေကို collect လုပ်တယ်။
-- Route 53 က domain DNS ကို manage လုပ်တယ်။
-- ACM က HTTPS certificate ကို manage လုပ်တယ်။
-- Terraform က AWS infrastructure အကုန်လုံးကို code နဲ့ manage လုပ်တယ်။
+---
 
-ဒီ foundation ကိုနားလည်သွားရင် AWS ပေါ်မှာ WordPress တင်တာတင်မကဘဲ real-world web application architecture တော်တော်များများကို build လုပ်နိုင်လာမယ်။
+## Route 53 - DNS Service
+
+AWS ရဲ့ scalable DNS service ပါ。 Domain registration, DNS routing, health checking တွေ support ပါတယ်。
+
+### Record Types
+
+| Type | Purpose | Example |
+|---|---|---|
+| A | Domain to IPv4 | `example.com -> 1.2.3.4` |
+| AAAA | Domain to IPv6 | `example.com -> ::1` |
+| CNAME | Domain to domain | `www.example.com -> example.com` |
+| Alias | Domain to AWS resource | `example.com -> ALB DNS name` |
+| MX | Mail server | Email routing |
+| TXT | Text data | Domain verification, SPF |
+| NS | Name server | Hosted zone delegation |
+
+### Alias Records
+
+AWS-specific record type ပါ。 CNAME နဲ့မတူဘဲ root domain (`example.com`) မှာသုံးနိုင်ပြီး ALB, CloudFront, S3 static website တွေဆီ point လုပ်နိုင်ပါတယ်。 Alias record ကို Route 53 က free resolve လုပ်ပေးပါတယ်。
+
+### Hosted Zones
+
+Hosted zone ဆိုတာ domain တစ်ခုအတွက် DNS records container ပါ。
+
+- **Public hosted zone** — internet-facing DNS
+- **Private hosted zone** — VPC ထဲမှာပဲ resolve ဖြစ်တဲ့ internal DNS
+
+### Routing Policies
+
+- **Simple** — single record, basic routing
+- **Weighted** — traffic percentage ခွဲပို့တယ် (A/B testing, gradual migration)
+- **Latency** — latency အနည်းဆုံး region ဆီ route လုပ်တယ်
+- **Failover** — primary unhealthy ဖြစ်ရင် secondary ဆီ redirect
+- **Geolocation** — user location အတိုင်း route လုပ်တယ်
+- **Geoproximity** — location + bias weight နဲ့ route
+- **Multivalue Answer** — multiple healthy records ပြပြီး client ကရွေးတယ်
+
+### Health Checks
+
+Route 53 က endpoint ကို health check လုပ်နိုင်ပြီး unhealthy ဖြစ်ရင် failover routing trigger လုပ်ပါတယ်。
+
+---
+
+## S3 - Simple Storage Service
+
+Object storage service ပါ。 Files တွေကို bucket ထဲမှာ objects အဖြစ်သိမ်းပါတယ်。 Object size limit က 5 TB ပါ。
+
+### Buckets and Objects
+
+- **Bucket** — globally unique name ရှိတဲ့ container
+- **Object** — key (file path) + value (file data) + metadata
+- **Key** — object ရဲ့ unique identifier (full path like `images/profile/user123.jpg`)
+
+### Storage Classes
+
+| Class | Use case | Cost |
+|---|---|---|
+| S3 Standard | Frequent access | High |
+| S3 Standard-IA | Infrequent access | Medium |
+| S3 One Zone-IA | Infrequent, single AZ | Lower |
+| S3 Glacier Instant | Archive, milliseconds retrieval | Low |
+| S3 Glacier Flexible | Archive, minutes/hours retrieval | Lower |
+| S3 Glacier Deep Archive | Long-term archive, 12hr retrieval | Lowest |
+| S3 Intelligent-Tiering | Auto-tier based on access | Medium |
+
+### Versioning
+
+Bucket versioning enable ပြုလုပ်ထားရင် object ကို overwrite/delete ဖြစ်ရင်လည်း previous versions ကိုထိန်းသိမ်းပါတယ်。 Accidental deletion recover ဖြစ်ပါတယ်。
+
+### Access Control
+
+- **Bucket Policy** — JSON policy, cross-account access control
+- **ACL** — object/bucket level, legacy (avoid if possible)
+- **Block Public Access** — bucket ကို public မဖြစ်အောင် lock ထားတဲ့ setting。 Default enable ဖြစ်ပြီး production မှာ always enable ထားသင့်တယ်
+
+### Encryption
+
+- **SSE-S3** — AWS managed keys, default
+- **SSE-KMS** — AWS KMS keys, audit trail ရှိတယ်
+- **SSE-C** — customer provided keys
+- **Client-side** — upload မတိုင်ခင် client side encrypt
+
+### Static Website Hosting
+
+S3 ကို static website (HTML, CSS, JS) host ဖို့သုံးနိုင်ပါတယ်。 Backend မလိုတဲ့ static sites တွေ (React build, Hugo sites) ကို S3 + CloudFront နဲ့ serve လုပ်တာ common pattern ပါ。
+
+### Lifecycle Policies
+
+Objects တွေကို age or count အပေါ်မူတည်ပြီး auto-transition or auto-delete ဖြစ်အောင် configure လုပ်နိုင်ပါတယ်。
+
+ဥပမာ:
+
+```text
+30 days  -> move to Standard-IA
+90 days  -> move to Glacier
+365 days -> delete
+```
+
+### S3 Event Notifications
+
+Object upload, delete event တွေဖြစ်ရင် SNS, SQS, Lambda ဆီ notification trigger လုပ်နိုင်ပါတယ်。
+
+---
+
+## Summary
+
+| Service | Category | Core Purpose |
+|---|---|---|
+| VPC | Networking | Isolated virtual network, subnet, routing |
+| ALB | Networking | HTTP/HTTPS load balancer, HTTPS termination |
+| EC2 | Compute | Virtual machine, application runtime |
+| RDS | Database | Managed relational DB, automated backups |
+| IAM | Security | Identity, permission, role management |
+| WAF | Security | HTTP-layer request filtering and blocking |
+| Security Group | Security | Stateful instance-level network firewall |
+| CloudWatch | Monitoring | Metrics, logs, alarms, dashboards |
+| SNS | Messaging | Pub/sub notifications to email/SMS/Lambda/SQS |
+| ACM | Security | Free SSL/TLS certificate management |
+| Route 53 | Networking | DNS management, health checking, routing policies |
+| S3 | Storage | Scalable object storage, static hosting |
