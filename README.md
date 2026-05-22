@@ -1,6 +1,6 @@
 # DevOps Bootcamp Docs
 
-ဒီ `docs/` folder က DevOps Bootcamp အတွက် recap/review notes တွေစုထားတဲ့နေရာပါ။ Linux server basics, AWS infrastructure services, Terraform Infrastructure as Code concepts တွေကို lab မလုပ်ခင်၊ lab လုပ်နေချိန်၊ ပြန်လေ့လာချိန်မှာ quick reference အနေနဲ့သုံးနိုင်ပါတယ်။
+DevOps Bootcamp အတွက် recap/review notes တွေစုထားတဲ့နေရာပါ။ Linux server basics, AWS infrastructure services, Terraform Infrastructure as Code concepts တွေကို lab မလုပ်ခင်၊ lab လုပ်နေချိန်၊ ပြန်လေ့လာချိန်မှာ quick reference အနေနဲ့သုံးနိုင်ပါတယ်။
 
 ## Documents
 
