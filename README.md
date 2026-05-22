@@ -1,24 +1,122 @@
-# DevOps Bootcamp Docs
+# DevOps Tools Setup Guide
 
-DevOps Bootcamp အတွက် recap/review notes တွေစုထားတဲ့နေရာပါ။ Linux server basics, AWS infrastructure services, Terraform Infrastructure as Code concepts တွေကို lab မလုပ်ခင်၊ lab လုပ်နေချိန်၊ ပြန်လေ့လာချိန်မှာ quick reference အနေနဲ့သုံးနိုင်ပါတယ်။
+Clean and simple install commands for the DevOps Bootcamp Ubuntu workstation.
 
-## Documents
+ဒီ guide က WSL Ubuntu or Ubuntu setup အတွက်ပါ။ Commands တွေကို script အနေနဲ့ run မလုပ်ဘဲ section တစ်ခုချင်းစီ copy/paste လုပ်ပြီး install လုပ်ပါ။
 
-| File | Review focus |
+## Install Map
+
+| Tool | Run in | Purpose |
+| --- | --- | --- |
+| Git | WSL Ubuntu / Ubuntu | Source code version control |
+| AWS CLI v2 | WSL Ubuntu / Ubuntu | Manage AWS from terminal |
+| Terraform | WSL Ubuntu / Ubuntu | Provision AWS infrastructure as code |
+| Packer | WSL Ubuntu / Ubuntu | Build custom AMIs |
+| Atmos | WSL Ubuntu / Ubuntu | Manage Terraform stacks and workflows |
+
+## 1. Install Ubuntu Base Packages
+
+Run in **WSL Ubuntu** or **Ubuntu terminal**.
+
+```bash
+sudo apt update
+sudo apt install -y curl unzip wget gnupg software-properties-common apt-transport-https lsb-release apt-utils
+```
+
+## 2. Install Git
+
+```bash
+sudo apt update
+sudo apt install -y git
+git --version
+```
+
+## 3. Install AWS CLI v2
+
+```bash
+cd /tmp
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip -o awscliv2.zip
+sudo ./aws/install
+aws --version
+```
+
+For update later:
+
+```bash
+cd /tmp
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip -o awscliv2.zip
+sudo ./aws/install --bin-dir /usr/local/bin --install-dir /usr/local/aws-cli --update
+aws --version
+```
+
+## 4. Add HashiCorp APT Repository
+
+Terraform and Packer both come from the HashiCorp APT repository. Add this repository once.
+
+```bash
+wget -O- https://apt.releases.hashicorp.com/gpg | gpg --dearmor | sudo tee /usr/share/keyrings/hashicorp-archive-keyring.gpg >/dev/null
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(grep -oP '(?<=UBUNTU_CODENAME=).*' /etc/os-release || lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+sudo apt update
+```
+
+## 5. Install Terraform
+
+```bash
+sudo apt install -y terraform
+terraform --version
+```
+
+## 6. Install Packer
+
+```bash
+sudo apt install -y packer
+packer --version
+```
+
+## 7. Install Atmos
+
+```bash
+sudo apt-get update
+sudo apt-get install -y apt-utils curl
+curl -1sLf "https://dl.cloudsmith.io/public/cloudposse/packages/cfg/setup/bash.deb.sh" | sudo -E bash
+sudo apt-get update
+sudo apt-get install -y atmos
+atmos version
+```
+
+## Final Check
+
+```bash
+git --version
+aws --version
+terraform --version
+packer --version
+atmos version
+```
+
+## Repo Scripts
+
+These shell scripts use similar commands for AMI/provisioning work:
+
+| Script | Tool |
 | --- | --- |
-| [linux-recap.md](./linux-recap.md) | Linux command line, filesystem, permissions, services, logs, Nginx, PHP-FPM, MySQL client, troubleshooting |
-| [aws-recap.md](./aws-recap.md) | VPC, ALB, EC2, RDS, IAM, WAF, Security Groups, CloudWatch, SNS, ACM, Route 53, S3 |
-| [terraform-recap.md](./terraform-recap.md) | Terraform workflow, modules, resources, variables, outputs, state, plan/apply, import, workspaces, security best practices |
+| `../scripts/prerequisites/install-git.sh` | Git |
+| `../scripts/prerequisites/install-awscli-v2.sh` | AWS CLI v2 |
+| `../scripts/prerequisites/install-terraform.sh` | Terraform |
+| `../scripts/prerequisites/install-atmos.sh` | Atmos |
 
-## Suggested Review Order
+## Recap Docs
 
-1. Read [linux-recap.md](./linux-recap.md) first to understand server operation basics.
-2. Read [aws-recap.md](./aws-recap.md) next to understand the AWS resources used in the infrastructure.
-3. Read [terraform-recap.md](./terraform-recap.md) last to understand how those resources are created and managed as code.
+- [linux-recap.md](./linux-recap.md)
+- [aws-recap.md](./aws-recap.md)
+- [terraform-recap.md](./terraform-recap.md)
 
-## How To Use These Notes
+## Official References
 
-- Use them as a quick refresher before running Terraform or Packer labs.
-- Copy only safe example commands; do not copy real secrets into tracked files.
-- When debugging, start from Linux service/log checks, then AWS resource checks, then Terraform state/plan checks.
-- Update these notes when a lab teaches a new pattern, command, or troubleshooting lesson.
+- [AWS CLI v2 install](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
+- [Git install for Linux](https://git-scm.com/install/linux)
+- [Terraform install on Ubuntu/Debian](https://developer.hashicorp.com/terraform/cli/install/apt)
+- [Packer install](https://developer.hashicorp.com/packer/install)
+- [Atmos install](https://atmos.tools/install)
